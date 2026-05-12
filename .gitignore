@@ -2,6 +2,12 @@
 data/
 backup/
 
+# Internal docs / session files
+HANDOFF.md
+BUILD_STATE.md
+STATE.md
+.hermes/
+
 # Node
 web/node_modules/
 web/build/
@@ -20,3 +26,7 @@ explorer-relay/data/
 
 # Umbrel local
 app-data/
+
+# Archives
+*.zip
+*.tar.gz
