@@ -1,0 +1,22 @@
+# Data directories (user state, not source)
+data/
+backup/
+
+# Node
+web/node_modules/
+web/build/
+explorer-relay/node_modules/
+explorer-relay/dist/
+explorer-relay/data/
+
+# OS
+.DS_Store
+.Trash/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Umbrel local
+app-data/

@@ -1,0 +1,29 @@
+manifestVersion: 1
+id: monero-fcmp-stressnet
+category: finance
+name: Monero FCMP++ Stressnet
+version: "0.19.0.0-alpha.1.5"
+tagline: Test the bleeding edge of Monero privacy.
+description: >-
+  This app runs a full node on the Monero FCMP++ alpha stressnet as part of the rigorous testing phase for the upcoming privacy upgrade which introduces Full-Chain Membership Proofs.
+
+
+  Warning: The stressnet currently has a very low anonymity set compared to mainnet. This app routes ALL node traffic exclusively through Tor to protect your IP address and maintain privacy during testing. Outbound clearnet connections are strictly blocked.
+
+
+  Features a luxurious, premium dashboard to monitor network stats, visualize sync progress, and interact with the Monero stressnet via a built-in wallet instance for testing transactions.
+developer: Monero Community & Brainchainz
+website: https://getmonero.org
+dependencies: []
+repo: https://github.com/monero-project/monero
+support: https://github.com/monero-project/monero/issues
+port: 4050
+gallery:
+  - 1.jpg
+  - 2.jpg
+  - 3.jpg
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+submitter: brainchainz
+submission: https://github.com/getumbrel/umbrel-apps/pull/

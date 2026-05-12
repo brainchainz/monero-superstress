@@ -1,0 +1,33 @@
+manifestVersion: 1.1
+id: brainchainz-monero-stressnet
+category: finance
+name: Monero FCMP++ Stressnet
+icon: https://raw.githubusercontent.com/brainchainz/monero-stressnet-umbrel/main/brainchainz-monero-stressnet/icon.png
+version: "1.6.0"
+tagline: Test the bleeding edge of Monero privacy
+description: >-
+  Run a full Monero FCMP++ stressnet node on your Umbrel, routed exclusively
+  through Tor. FCMP++ (Full-Chain Membership Proofs) is the upcoming privacy
+  upgrade that eliminates ring signature limitations — this stressnet lets you
+  test it before mainnet launch.
+
+
+  Features a premium dark dashboard to monitor sync progress, network stats,
+  peer connections, and difficulty. Includes a built-in wallet lab for creating
+  wallets and sending test FCMP++ transactions on the stressnet.
+
+
+  All traffic is routed through Tor — zero clearnet connections. Your IP is
+  never exposed during testing. The stressnet has a low anonymity set, so Tor
+  routing is critical for protecting testers.
+developer: Brainchainz
+website: https://github.com/brainchainz/monero-stressnet-umbrel
+repo: https://github.com/brainchainz/monero-stressnet-umbrel
+support: https://github.com/brainchainz/monero-stressnet-umbrel/issues
+port: 4050
+dependencies: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+submitter: brainchainz
+submission: https://github.com/getumbrel/umbrel-apps/pull/

@@ -1,0 +1,160 @@
+/* ═══════════════════════════════════════════════════════════════════════════════
+   MONERO SUPERSTRESS — OBSIDIAN HACKER THEME (continued)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Address list in wallet tab */
+.addr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+/* Mining tab styles */
+.mining-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mining-control-panel {
+  padding: 20px;
+}
+
+.mining-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.mining-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.mining-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.mining-stat {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 80px;
+  justify-content: center;
+}
+
+.mining-stat .stat-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.mining-value {
+  font-family: var(--mono);
+  font-size: 15px;
+  color: var(--text-0);
+  font-weight: 600;
+}
+
+.mining-status {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.mining-status.on {
+  color: var(--green);
+}
+
+.mining-status.off {
+  color: var(--text-2);
+}
+
+.mining-info {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mining-blocks-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.mining-blocks-panel .blocks-table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mining-blocks-panel .blocks-table-header h3 {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.blocks-table-wrapper {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.mining-blocks-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.mining-blocks-table th {
+  text-align: left;
+  padding: 8px 12px;
+  color: var(--text-2);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+  font-size: 10px;
+  position: sticky;
+  top: 0;
+  background: var(--bg-1);
+}
+
+.mining-blocks-table td {
+  padding: 7px 12px;
+  color: var(--text-1);
+  border-bottom: 1px solid rgba(255,255,255,0.02);
+}
+
+.mining-blocks-table tr {
+  transition: background 0.12s;
+}
+
+.mining-blocks-table tr:hover {
+  background: rgba(255,102,0,0.06);
+}
+
+.mining-blocks-table .block-hash {
+  color: var(--accent);
+  font-size: 10px;
+}
+
+.mining-blocks-table .block-reward {
+  color: var(--gold);
+}

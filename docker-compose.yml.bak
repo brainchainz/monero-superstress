@@ -1,0 +1,98 @@
+version: "3.7"
+
+# Local development docker-compose. For Umbrel, see stressnet-umbrel/.
+# This file is for standalone testing outside of Umbrel.
+
+services:
+  tor:
+    image: getumbrel/tor:0.4.7.8
+    restart: always
+    user: "1000:1000"
+    environment:
+      - TOR_EXTRA_ARGS=--SocksPort 0.0.0.0:9050
+    ports:
+      - "9050:9050"
+    networks:
+      default:
+        ipv4_address: 10.21.0.2
+
+  monerod:
+    image: sirjamzalot/monero-stressnet:latest
+    restart: always
+    user: "1000:1000"
+    # No --restricted-rpc: unrestricted needed for monitor (get_connections, get_bans).
+    # Safe because RPC is only exposed locally for dev, not to the internet.
+    command: >-
+      --testnet
+      --non-interactive
+      --rpc-bind-ip=0.0.0.0
+      --rpc-bind-port=28081
+      --confirm-external-bind
+      --tx-proxy tor,10.21.0.2:9050
+      --out-peers 0
+      --data-dir=/home/monero/.bitmonero
+      --enable-dns-blocklist
+      --no-igd
+    volumes:
+      - ./data/db:/home/monero/.bitmonero
+    ports:
+      - "28080:28080"
+      - "28081:28081"
+      - "28082:28082"
+    depends_on:
+      - tor
+    networks:
+      default:
+        ipv4_address: 10.21.0.3
+
+  wallet-rpc:
+    image: sirjamzalot/monero-stressnet:latest
+    restart: always
+    user: "1000:1000"
+    entrypoint: ["monero-wallet-rpc"]
+    command: >-
+      --testnet
+      --daemon-address=10.21.0.3:28081
+      --wallet-dir=/home/monero/wallet
+      --rpc-bind-ip=0.0.0.0
+      --rpc-bind-port=28083
+      --disable-rpc-login
+      --confirm-external-bind
+      --trusted-daemon
+      --wallet-file=stressnet_wallet
+      --password ''
+    volumes:
+      - ./data/wallet:/home/monero/wallet
+    ports:
+      - "28083:28083"
+    depends_on:
+      - monerod
+    networks:
+      default:
+        ipv4_address: 10.21.0.4
+
+  web:
+    image: sirjamzalot/monero-stressnet-web:latest
+    restart: always
+    ports:
+      - "4050:4050"
+    depends_on:
+      - monerod
+      - wallet-rpc
+    environment:
+      - MONEROD_RPC=http://10.21.0.3:28081
+      - WALLET_RPC=http://10.21.0.4:28083
+      - PORT=4050
+      - MONITOR_DB_PATH=/data/monitor.db
+    volumes:
+      - ./data/monitor:/data
+    networks:
+      default:
+        ipv4_address: 10.21.0.5
+
+networks:
+  default:
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.21.0.0/24

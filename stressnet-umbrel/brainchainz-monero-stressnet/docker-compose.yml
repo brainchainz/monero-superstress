@@ -1,0 +1,130 @@
+services:
+  app_proxy:
+    image: getumbrel/app-proxy:1.0.0
+    container_name: brainchainz_monero_stressnet_app_proxy
+    restart: on-failure
+    environment:
+      - APP_HOST=brainchainz_monero_stressnet_web
+      - APP_PORT=4050
+    networks:
+      - default
+
+  tor:
+    image: getumbrel/tor:0.4.7.8
+    container_name: brainchainz_monero_stressnet_tor
+    restart: on-failure
+    user: "1000:1000"
+    command: ["-f", "/etc/tor/torrc"]
+    volumes:
+      - ${APP_DATA_DIR:-./data}/tor:/tmp/tor
+      - ./torrc:/etc/tor/torrc:ro
+    networks:
+      default:
+        ipv4_address: 10.99.10.2
+
+  monerod:
+    image: sirjamzalot/monero-stressnet:latest
+    container_name: brainchainz_monero_stressnet_monerod
+    restart: on-failure
+    user: "1000:1000"
+    # NOTE: No --restricted-rpc because RPC is internal-only (no host port mapping).
+    # Unrestricted RPC needed for monitor data collection (get_connections, get_bans, etc).
+    # --proxy routes ALL P2P connections through Tor (sync + tx relay).
+    # --tx-proxy is kept as a belt-and-suspenders for tx broadcast.
+    command: >-
+      --testnet
+      --non-interactive
+      --rpc-bind-ip=0.0.0.0
+      --rpc-bind-port=28081
+      --confirm-external-bind
+      --proxy=10.99.10.2:9050
+      --proxy-allow-dns-leaks
+      --tx-proxy=tor,10.99.10.2:9050
+      --out-peers=32
+      --data-dir=/data
+      --prune-blockchain
+      --enable-dns-blocklist
+      --no-igd
+      --zmq-pub=tcp://0.0.0.0:28082
+    volumes:
+      - ${APP_DATA_DIR:-./data}/db:/data
+    depends_on:
+      - tor
+    networks:
+      default:
+        ipv4_address: 10.99.10.3
+
+  wallet-rpc:
+    image: sirjamzalot/monero-stressnet:latest
+    container_name: brainchainz_monero_stressnet_wallet_rpc
+    restart: on-failure
+    user: "1000:1000"
+    entrypoint: ["monero-wallet-rpc"]
+    command: >-
+      --testnet
+      --daemon-address=10.99.10.3:28081
+      --wallet-dir=/home/monero/wallet
+      --rpc-bind-ip=0.0.0.0
+      --rpc-bind-port=28083
+      --disable-rpc-login
+      --confirm-external-bind
+      --trusted-daemon
+    volumes:
+      - ${APP_DATA_DIR:-./data}/wallet:/home/monero/wallet
+    depends_on:
+      - monerod
+    networks:
+      default:
+        ipv4_address: 10.99.10.4
+
+  explorer-relay:
+    image: sirjamzalot/monero-fcmp-stressnet-relay:latest
+    container_name: brainchainz_monero_stressnet_explorer_relay
+    restart: on-failure
+    environment:
+      - MONEROD_HOST=10.99.10.3
+      - MONEROD_RPC_PORT=28081
+      - MONEROD_ZMQ_PORT=28082
+      - SERVER_PORT=3001
+      - DB_PATH=/data/relay.db
+      - RPC_TIMEOUT_MS=20000
+      - POLL_INTERVAL_MS=30000
+      - MEMPOOL_POLL_INTERVAL_MS=120000
+      - MEMPOOL_POLL_MAX_TXS=2000
+    volumes:
+      - ${APP_DATA_DIR:-./data}/relay:/data
+    depends_on:
+      - monerod
+    networks:
+      default:
+        ipv4_address: 10.99.10.6
+
+  web:
+    image: sirjamzalot/monero-stressnet-web:latest
+    container_name: brainchainz_monero_stressnet_web
+    restart: on-failure
+    ports:
+      - "4050:4050"
+    environment:
+      - PORT=4050
+      - MONEROD_RPC=http://10.99.10.3:28081
+      - WALLET_RPC=http://10.99.10.4:28083
+      - RELAY_RPC=http://10.99.10.6:3001
+      - MONITOR_DB_PATH=/data/monitor.db
+      - WALLET_FILES_DIR=/wallet-files
+    volumes:
+      - ${APP_DATA_DIR:-./data}/monitor:/data
+      - ${APP_DATA_DIR:-./data}/wallet:/wallet-files
+    depends_on:
+      - monerod
+      - wallet-rpc
+      - explorer-relay
+    networks:
+      default:
+        ipv4_address: 10.99.10.5
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 10.99.10.0/24

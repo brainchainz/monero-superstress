@@ -1,0 +1,102 @@
+services:
+  tor:
+    image: getumbrel/tor:0.4.7.8
+    restart: always
+    user: 1000:1000
+    command:
+    - -f
+    - /etc/tor/torrc
+    volumes:
+    - ./tor/torrc:/etc/tor/torrc:ro
+    networks:
+      default:
+        ipv4_address: 10.88.88.2
+  monerod:
+    image: sirjamzalot/monero-stressnet:latest
+    restart: always
+    user: 1000:1000
+    command: --testnet --prune-blockchain --sync-pruned-blocks --block-sync-size=10
+      --non-interactive --rpc-bind-ip=0.0.0.0 --rpc-bind-port=28081 --confirm-external-bind
+      --tx-proxy=tor,10.88.88.2:9050,disable_noise
+      --out-peers 16 --in-peers 16 --data-dir=/home/monero/.bitmonero --no-igd
+      --add-priority-node 71.31.209.128:28080
+      --add-priority-node 207.180.199.254:28080
+      --add-priority-node 50.27.93.192:28080
+      --add-priority-node 70.179.160.204:28080
+    volumes:
+    - ./data/db:/home/monero/.bitmonero
+    ports:
+    - 28080:28080
+    - 28081:28081
+    - 28082:28082
+    depends_on:
+    - tor
+    networks:
+      default:
+        ipv4_address: 10.88.88.3
+  wallet-rpc:
+    image: sirjamzalot/monero-stressnet:latest
+    restart: always
+    user: 1000:1000
+    entrypoint: /usr/local/bin/monero-wallet-rpc
+    command: --testnet --daemon-address=10.88.88.3:28081 --wallet-dir=/home/monero/wallet
+      --rpc-bind-ip=0.0.0.0 --rpc-bind-port=28083 --disable-rpc-login --confirm-external-bind
+      --trusted-daemon
+    volumes:
+    - ./data/wallet:/home/monero/wallet
+    - ./data/wallet/.shared-ringdb:/.shared-ringdb
+    ports:
+    - 28083:28083
+    depends_on:
+    - monerod
+    networks:
+      default:
+        ipv4_address: 10.88.88.4
+  spammer-wallet-rpc:
+    image: sirjamzalot/monero-stressnet:latest
+    restart: always
+    user: 1000:1000
+    entrypoint: /usr/local/bin/monero-wallet-rpc
+    command: --testnet --daemon-address=10.88.88.3:28081 --wallet-dir=/home/monero/spammer-wallet
+      --rpc-bind-ip=0.0.0.0 --rpc-bind-port=28084 --disable-rpc-login --confirm-external-bind
+      --trusted-daemon
+    volumes:
+    - ./data/spammer-wallet:/home/monero/spammer-wallet
+    - ./data/wallet/.shared-ringdb:/.shared-ringdb
+    networks:
+      default:
+        ipv4_address: 10.88.88.7
+    depends_on:
+    - monerod
+  web:
+    image: sirjamzalot/monero-stressnet-web:latest
+    restart: always
+    ports:
+    - 4050:4050
+    depends_on:
+    - monerod
+    - wallet-rpc
+    - spammer-wallet-rpc
+    environment:
+    - MONEROD_RPC=http://10.88.88.3:28081
+    - WALLET_RPC=http://10.88.88.4:28083
+    - SPAMMER_WALLET_RPC=http://10.88.88.7:28084
+    - PORT=4050
+    - RELAY_RPC=http://10.88.88.6:3001
+    - MONITOR_DB_PATH=/data/monitor.db
+    - MONEROD_LOG_PATH=/data/db/testnet/bitmonero.log
+    - WALLET_FILES_DIR=/wallet-files
+    volumes:
+    - ./data/monitor:/data
+    - ./data/db:/data/db:ro
+    - /var/run/docker.sock:/var/run/docker.sock
+    - ./data/wallet:/wallet-files
+    networks:
+      default:
+        ipv4_address: 10.88.88.5
+networks:
+  default:
+    ipam:
+      driver: default
+      config:
+      - subnet: 10.88.88.0/24

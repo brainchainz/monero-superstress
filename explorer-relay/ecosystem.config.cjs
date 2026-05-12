@@ -1,0 +1,31 @@
+module.exports = {
+  apps: [
+    {
+      name: 'xmr-relay',
+      script: 'dist/index.js',
+      cwd: __dirname,
+      instances: 1,
+      exec_mode: 'fork',
+      watch: false,
+      autorestart: true,
+      max_restarts: 50,
+      restart_delay: 5000,
+      max_memory_restart: '512M',
+      node_args: '--enable-source-maps',
+      env: {
+        NODE_ENV: 'production',
+        MONEROD_HOST: '127.0.0.1',
+        MONEROD_RPC_PORT: '18081',
+        MONEROD_ZMQ_PORT: '18082',
+        SERVER_PORT: '3001',
+        CORS_ORIGINS: 'https://xmr.irish,https://www.xmr.irish',
+        DB_PATH: './data/relay.db',
+        LOG_LEVEL: 'info',
+      },
+      error_file: './logs/err.log',
+      out_file: './logs/out.log',
+      merge_logs: true,
+      time: true,
+    },
+  ],
+};
