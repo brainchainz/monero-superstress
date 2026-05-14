@@ -561,7 +561,7 @@ app.get('/api/node/info', async (req, res) => {
                     offline: false,
                     status: 'syncing',
                     blocks_left: sync.blocks_left,
-                    version: 'v0.19.0.0-beta.1.0-release (log fallback)',
+                    version: 'v0.19.0.0-beta.1.1-release (log fallback)',
                     nettype: 'testnet',
                     start_time: Math.floor(Date.now() / 1000)
                 },
@@ -717,7 +717,7 @@ app.get('/api/config', (req, res) => {
         wallet_rpc: WALLET_RPC,
         port: port,
         version: '1.6.0',
-        stressnet_tag: 'v0.19.0.0-beta.1.0',
+        stressnet_tag: 'v0.19.0.0-beta.1.1',
         network: 'FCMP++ Stressnet',
         tor_proxy: process.env.TOR_PROXY || 'tor:9050',
         features: {
