@@ -18,6 +18,7 @@ const RELAY_TIMEOUT_MS = Number(process.env.RELAY_TIMEOUT_MS) || 8000;
 const MIN_STRESS_INTERVAL_MS = Number(process.env.MIN_STRESS_INTERVAL_MS) || 5000;
 const MAX_STRESS_AMOUNT_XMR = Number(process.env.MAX_STRESS_AMOUNT_XMR) || 100;
 const WALLET_STATE_TTL_MS = Number(process.env.WALLET_STATE_TTL_MS) || 60000;
+const MONEROD_CONTAINER_NAME = process.env.MONEROD_CONTAINER_NAME || 'monero-fcmp-stressnet-monerod-1';
 const WALLET_REFRESH_MS = Number(process.env.WALLET_REFRESH_MS) || 60000;
 const WALLET_RPC_FAST_TIMEOUT_MS = Number(process.env.WALLET_RPC_FAST_TIMEOUT_MS) || 90000;
 const WALLET_RPC_SLOW_TIMEOUT_MS = Number(process.env.WALLET_RPC_SLOW_TIMEOUT_MS) || 300000;
@@ -1151,7 +1152,18 @@ app.get('/api/logs', (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONFIG ENDPOINTS
 // ═══════════════════════════════════════════════════════════════════════════════
-app.get('/api/config', (req, res) => {
+app.get('/api/config', async (req, res) => {
+    // Detect if monerod is running with --prune-blockchain by inspecting its container
+    let pruned = false;
+    try {
+        const containers = await callDockerAPI('GET', '/containers/json?all=true');
+        const monerod = Array.isArray(containers) && containers.find(c =>
+            c.Names.includes('/' + MONEROD_CONTAINER_NAME));
+        if (monerod && monerod.Command) {
+            const cmd = typeof monerod.Command === 'string' ? monerod.Command : JSON.stringify(monerod.Command);
+            pruned = /--prune-blockchain/.test(cmd);
+        }
+    } catch (_) { /* ignore — Docker may not be available */ }
     res.json({
         monerod_rpc: NODE_RPC,
         wallet_rpc: WALLET_RPC,
@@ -1160,6 +1172,7 @@ app.get('/api/config', (req, res) => {
         stressnet_tag: 'v0.19.0.0-beta.1.1',
         network: 'FCMP++ Stressnet',
         tor_proxy: process.env.TOR_PROXY || 'tor:9050',
+        pruned,
         features: {
             fcmp: true,
             carrot: true,

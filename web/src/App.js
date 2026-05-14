@@ -1301,6 +1301,7 @@ function ConfigTab({ nodeInfo }) {
                         'Wallet RPC': config.wallet_rpc,
                         'Dashboard Port': config.port,
                         'Tor Proxy': config.tor_proxy,
+                        'Storage': config.pruned ? 'Pruned' : 'Unpruned',
                     }).map(([k, v]) => (
                         <div key={k} className="config-row">
                             <span className="config-key">{k}</span>
