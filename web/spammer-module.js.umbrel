@@ -120,7 +120,7 @@ async function refreshSpammerWalletState() {
         spammerWalletState.balance = bal.result?.balance || 0;
         spammerWalletState.unlocked_balance = bal.result?.unlocked_balance || 0;
     } catch (e) {
-        pushSpammerLog('warn', `balance check failed: ${e.message}`);
+        pushSpammerLog('warning', `balance check failed: ${e.message}`);
     }
     try {
         const accts = await callSpammerWalletRpc('get_accounts', {}, 15000);
@@ -223,7 +223,7 @@ async function buildOutputTree(nOutputs = 15, nLevels = 3, feePriority = 4) {
             }, 60000);
             funded++;
         } catch (e) {
-            pushSpammerLog('warn', `Failed to fund account ${i}: ${e.message}`);
+            pushSpammerLog('warning', `Failed to fund account ${i}: ${e.message}`);
         }
     }
 
@@ -248,7 +248,7 @@ async function spamTick() {
         const accts = await callSpammerWalletRpc('get_accounts', {}, 15000);
         const accounts = accts.result?.subaddress_accounts || [];
         if (accounts.length <= 1) {
-            pushSpammerLog('warn', 'No leaf accounts to spam from — build output tree first');
+            pushSpammerLog('warning', 'No leaf accounts to spam from — build output tree first');
             spamInFlight = false;
             return;
         }
@@ -281,7 +281,7 @@ async function spamTick() {
         if (result.error) {
             spammerWalletState.spam_fail++;
             spammerWalletState.last_error = result.error.message;
-            pushSpammerLog('warn', `Spam fail: ${result.error.message}`);
+            pushSpammerLog('warning', `Spam fail: ${result.error.message}`);
         } else {
             spammerWalletState.spam_success++;
             spammerWalletState.last_error = null;
@@ -290,7 +290,7 @@ async function spamTick() {
     } catch (e) {
         spammerWalletState.spam_fail++;
         spammerWalletState.last_error = e.message;
-        pushSpammerLog('warn', `Spam error: ${e.message}`);
+        pushSpammerLog('warning', `Spam error: ${e.message}`);
     } finally {
         spamInFlight = false;
     }

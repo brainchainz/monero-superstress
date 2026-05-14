@@ -793,7 +793,7 @@ function WalletTab({ onExplorerTx }) {
             </div>
             <div className="wallet-body-row">
                 <div className="glass-panel send-panel"><h3 className="panel-title"><Icons.Send size={14} color="var(--accent)" /> Send FCMP++ TX</h3><div className="send-form"><div className="form-group"><label>Recipient</label><input type="text" className="input-dark" placeholder="Stressnet address..." value={sendAddr} onChange={e => setSendAddr(e.target.value)} /></div><div className="form-row"><div className="form-group" style={{ flex: 1 }}><label>Amount (tXMR)</label><input type="number" step="0.0001" className="input-dark" placeholder="0.0000" value={sendAmt} onChange={e => setSendAmt(e.target.value)} /></div><div className="form-group" style={{ width: 90 }}><label style={{ color: 'var(--green)' }}>Proof</label><input type="text" className="input-dark" value="FCMP++" disabled /></div></div><button className="btn-primary btn-full" onClick={sendTx} disabled={sending || !sendAddr || !sendAmt || !balance?.unlocked_balance}>{sending ? 'Broadcasting...' : 'Send Transaction'}</button>{txResult && <div className={`tx-result ${txResult.success ? 'tx-ok' : 'tx-fail'}`}>{txResult.success ? <>TX Sent: <span className="mono-xs">{txResult.hash?.substring(0, 24)}...</span></> : <>Failed: {txResult.error}</>}</div>}</div></div>
-                <div className="glass-panel history-panel"><h3 className="panel-title"><Icons.Activity size={14} /> Transaction History</h3><div className="tx-list">{allTx.length === 0 && <div className="dimmed mono-xs" style={{ padding: 16 }}>No transactions yet</div>}{allTx.slice(0, 20).map((tx, i) => <div key={i} className={`tx-row tx-${tx.type}`}><span className={`tx-dir ${tx.type === 'in' || tx.type === 'pool' ? 'tx-in' : 'tx-out'}`}>{tx.type === 'in' ? '\u2193' : tx.type === 'out' ? '\u2191' : '\u25cc'}</span><span className="mono-xs">{fmt.xmr(tx.amount)} tXMR</span><button className="wallet-tx-clickable" onClick={() => onExplorerTx && onExplorerTx(tx.txid)} title="Explore in block explorer">{tx.txid?.substring(0, 16)}...</button><span className="mono-xs dimmed">{tx.timestamp ? new Date(tx.timestamp * 1000).toLocaleDateString() : 'pending'}</span></div>)}</div></div>
+                <div className="glass-panel history-panel"><h3 className="panel-title"><Icons.Activity size={14} /> Transaction History</h3><div className="tx-list">{allTx.length === 0 && <div className="dimmed mono-xs" style={{ padding: 16 }}>No transactions yet</div>}{allTx.map((tx, i) => <div key={i} className={`tx-row tx-${tx.type}`}><span className={`tx-dir ${tx.type === 'in' || tx.type === 'pool' ? 'tx-in' : 'tx-out'}`}>{tx.type === 'in' ? '\u2193' : tx.type === 'out' ? '\u2191' : '\u25cc'}</span><span className="mono-xs">{fmt.xmr(tx.amount)} tXMR</span><button className="wallet-tx-clickable" onClick={() => onExplorerTx && onExplorerTx(tx.txid)} title="Explore in block explorer">{tx.txid?.substring(0, 16)}...</button><span className="mono-xs dimmed">{tx.timestamp ? new Date(tx.timestamp * 1000).toLocaleDateString() : 'pending'}</span></div>)}</div></div>
             </div>
         </div>
     );
@@ -941,6 +941,10 @@ function StressTestTab() {
     const [spamResult, setSpamResult] = useState(null);
     const [spamInterval, setSpamInterval] = useState(5);
     const [addrCopied, setAddrCopied] = useState(false);
+    const [spammerSeed, setSpammerSeed] = useState(null);
+    const [showSpammerSeed, setShowSpammerSeed] = useState(false);
+    const [spammerSeedLoading, setSpammerSeedLoading] = useState(false);
+    const [spammerSeedCopied, setSpammerSeedCopied] = useState(false);
 
     const fetchSpammer = useCallback(async () => {
         try {
@@ -1033,6 +1037,26 @@ function StressTestTab() {
         } finally { setCreatingSpammer(false); }
     };
 
+    const revealSpammerSeed = async () => {
+        if (spammerSeed) { setShowSpammerSeed(v => !v); return; }
+        setSpammerSeedLoading(true);
+        try {
+            const res = await axios.get(`${API}/xmrspammer/wallet/seed`, { timeout: 60000 });
+            if (res.data?.result?.key) {
+                setSpammerSeed(res.data.result.key);
+                setShowSpammerSeed(true);
+            }
+        } catch (e) {
+            console.error('Failed to fetch spammer seed:', e);
+        } finally { setSpammerSeedLoading(false); }
+    };
+
+    const copySpammerSeed = () => {
+        if (spammerSeed) {
+            try { navigator.clipboard.writeText(spammerSeed); setSpammerSeedCopied(true); setTimeout(() => setSpammerSeedCopied(false), 2000); } catch {}
+        }
+    };
+
     const fmtBal = (a) => a ? (a / 1e12).toFixed(4) : '0.0000';
 
     return (
@@ -1070,6 +1094,24 @@ function StressTestTab() {
                                     {addrCopied ? <><Icons.Check size={14} color="var(--green)" /> <span style={{ color: 'var(--green)', fontSize: 10 }}>Copied!</span></> : <Icons.Copy size={14} />}
                                 </button>
                             </div>
+                        </div>
+                        <div className="form-group" style={{ marginTop: 12 }}>
+                            <label>Seed Phrase (backup for testnet)</label>
+                            <div className="seed-actions" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                <button className="icon-btn" onClick={copySpammerSeed} title="Copy seed" disabled={!spammerSeed || spammerSeedLoading}>
+                                    {spammerSeedCopied ? <Icons.Check size={14} color="var(--green)" /> : <Icons.Copy size={14} />}
+                                </button>
+                                <button className="btn-ghost btn-sm" onClick={revealSpammerSeed} disabled={spammerSeedLoading}>
+                                    {spammerSeedLoading ? 'Loading...' : showSpammerSeed ? 'Hide' : spammerSeed ? 'Show' : 'Reveal'}
+                                </button>
+                            </div>
+                            {showSpammerSeed && spammerSeed ? (
+                                <div className="seed-phrase" style={{ marginTop: 8 }}>{spammerSeed}</div>
+                            ) : (
+                                <div className="mono-xs dimmed" style={{ marginTop: 4 }}>
+                                    Seed is fetched only when you click Reveal.
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -1188,7 +1230,7 @@ function StressTestTab() {
                     <div className="tx-list">
                         {logs.slice(0, 50).map((entry, i) => (
                             <div key={i} className="tx-row">
-                                <span className={`mono-xs ${entry.level === 'error' ? 'tx-err' : entry.level === 'warn' ? 'tx-warn' : ''}`}>
+                                <span className={`mono-xs ${entry.level === 'error' ? 'tx-err' : entry.level === 'warning' ? 'tx-warn' : ''}`}>
                                     [{entry.level?.toUpperCase()}]
                                 </span>
                                 <span className="mono-xs dimmed">{entry.message}</span>
@@ -1213,11 +1255,38 @@ function StressTestTab() {
 function ConfigTab({ nodeInfo }) {
     const [config, setConfig] = useState(null);
     const [hfInfo, setHfInfo] = useState(null);
+    const [logLevel, setLogLevel] = useState('0');
+    const [logResult, setLogResult] = useState('');
+    const [flushing, setFlushing] = useState(false);
+    const [flushResult, setFlushResult] = useState('');
 
     useEffect(() => {
         axios.get(`${API}/config`).then(r => setConfig(r.data)).catch(() => {});
         axios.get(`${API}/node/hard_fork`).then(r => setHfInfo(r.data?.result)).catch(() => {});
+        axios.get(`${API}/node/log_level`).then(r => { if (r.data?.level != null) setLogLevel(r.data.level); }).catch(() => {});
     }, []);
+
+    const setLog = async () => {
+        setLogResult('');
+        try {
+            const res = await axios.post(`${API}/node/set_log`, { level: logLevel });
+            setLogResult('Log level set to: ' + res.data.level);
+        } catch (e) {
+            setLogResult('Error: ' + (e.response?.data?.error || e.message));
+        }
+    };
+
+    const flushTxPool = async () => {
+        setFlushing(true);
+        setFlushResult('');
+        try {
+            const res = await axios.post(`${API}/node/flush_txpool`);
+            setFlushResult('TX pool flushed (' + (res.data.tx_count || 0) + ' transactions removed)');
+        } catch (e) {
+            setFlushResult('Error: ' + (e.response?.data?.error || e.message));
+        }
+        setFlushing(false);
+    };
 
     return (
         <div className="config-layout">
@@ -1250,6 +1319,34 @@ function ConfigTab({ nodeInfo }) {
                             <span className={`feature-badge ${v ? 'on' : 'off'}`}>{v ? 'ENABLED' : 'DISABLED'}</span>
                         </div>
                     ))}
+                </div>
+            </div>
+
+            <div className="glass-panel config-panel">
+                <h3 className="panel-title">Daemon Controls</h3>
+                <div className="config-rows">
+                    <div className="config-row">
+                        <span className="config-key">Log Level</span>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <select value={logLevel} onChange={e => setLogLevel(e.target.value)} className="log-select">
+                                <option value="0">0 — Off</option>
+                                <option value="1">1 — Error</option>
+                                <option value="2">2 — Warning</option>
+                                <option value="3">3 — Info</option>
+                                <option value="4">4 — Debug</option>
+                                <option value="*">* — All</option>
+                            </select>
+                            <button className="btn-primary btn-sm" onClick={setLog} style={{ padding: '4px 12px', fontSize: '12px' }}>Set</button>
+                        </div>
+                    </div>
+                    {logResult && <div className="config-row"><span className="mono-xs dimmed">{logResult}</span></div>}
+                    <div className="config-row">
+                        <span className="config-key">TX Pool</span>
+                        <button className="btn-danger btn-sm" onClick={flushTxPool} disabled={flushing} style={{ padding: '4px 12px', fontSize: '12px' }}>
+                            {flushing ? 'Flushing...' : 'Flush Pool'}
+                        </button>
+                    </div>
+                    {flushResult && <div className="config-row"><span className="mono-xs dimmed">{flushResult}</span></div>}
                 </div>
             </div>
 
@@ -1682,7 +1779,7 @@ export default function App() {
                     <img src="/supersress-logo.png" alt="SuperStress" className="brand-icon" />
                     <div className="brand-text">
                         <h1>MONERO SUPERSTRESS</h1>
-                        <span className="brand-sub">FCMP++ &middot; v0.19.0.0-beta.1.0 &middot; TOR ONLY</span>
+                        <span className="brand-sub">FCMP++ &middot; v0.19.0.0-beta.1.1 &middot; TOR ONLY</span>
                     </div>
                 </div>
                 <div className="header-right">

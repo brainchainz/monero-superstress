@@ -47,7 +47,9 @@ function pushSpammerLog(level, msg) {
     if (spammerWalletState.log.length > 200) spammerWalletState.log.pop();
 }
 
-async function callSpammerWalletRpc(method, params = {}, timeout = 30000) {
+const fs = require('fs');
+
+async function callSpammerWalletRpc(method, params = {}, timeout = 90000) {
     const response = await axios.post(`${SPAMMER_WALLET_RPC}/json_rpc`, {
         jsonrpc: '2.0',
         id: 'spammer-' + Date.now(),
@@ -63,7 +65,7 @@ async function callSpammerWalletRpc(method, params = {}, timeout = 30000) {
 }
 
 // Helper for funding — calls the MAIN wallet RPC, not spammer RPC
-async function callMainWalletRpc(method, params = {}, timeout = 60000) {
+async function callMainWalletRpc(method, params = {}, timeout = 120000) {
     const response = await axios.post(`${MAIN_WALLET_RPC}/json_rpc`, {
         jsonrpc: '2.0',
         id: 'main-wallet-' + Date.now(),
@@ -97,11 +99,18 @@ async function callNodeRestricted(method, params = {}, timeout = 10000) {
 
 async function createSpammerWallet(filename, password = '') {
     const safe = /^[A-Za-z0-9_-]{1,64}$/.test(filename) ? filename : SPAMMER_WALLET_DEFAULT;
+    // Check if wallet already exists on disk to avoid "file_exists" error
+    const walletPath = `${SPAMMER_WALLET_DIR}/${safe}`;
+    try {
+        if (fs.existsSync(walletPath + '.keys')) {
+            throw new Error(`Wallet file already exists: ${safe}.keys`);
+        }
+    } catch (_) {}
     await callSpammerWalletRpc('create_wallet', {
         filename: safe,
         password,
         language: 'English'
-    }, 60000);
+    }, 120000);
     spammerWalletState.filename = safe;
     spammerWalletState.wallet_open = true;
     pushSpammerLog('info', `Created spammer wallet: ${safe}`);
@@ -116,7 +125,7 @@ async function openSpammerWallet(filename, password = '') {
     await callSpammerWalletRpc('open_wallet', {
         filename: safe,
         password
-    }, 60000);
+    }, 120000);
     spammerWalletState.filename = safe;
     spammerWalletState.wallet_open = true;
     pushSpammerLog('info', `Opened spammer wallet: ${safe}`);
@@ -131,13 +140,27 @@ async function closeSpammerWallet() {
     pushSpammerLog('info', 'Closed spammer wallet');
 }
 
+async function getSpammerSeed() {
+    const resp = await callSpammerWalletRpc('query_key', { key_type: 'mnemonic' }, 60000);
+    return resp.result?.key || null;
+}
+
+async function getSpammerRestoreHeight() {
+    try {
+        const resp = await callSpammerWalletRpc('getheight', {}, 15000);
+        return resp.result?.height || 0;
+    } catch (e) {
+        return 0;
+    }
+}
+
 async function refreshSpammerWalletState() {
     try {
         const bal = await callSpammerWalletRpc('get_balance', { account_index: 0 }, 15000);
         spammerWalletState.balance = bal.result?.balance || 0;
         spammerWalletState.unlocked_balance = bal.result?.unlocked_balance || 0;
     } catch (e) {
-        pushSpammerLog('warn', `balance check failed: ${e.message}`);
+        pushSpammerLog('warning', `balance check failed: ${e.message}`);
     }
     try {
         const accts = await callSpammerWalletRpc('get_accounts', {}, 15000);
@@ -240,7 +263,7 @@ async function buildOutputTree(nOutputs = 15, nLevels = 3, feePriority = 4) {
             }, 60000);
             funded++;
         } catch (e) {
-            pushSpammerLog('warn', `Failed to fund account ${i}: ${e.message}`);
+            pushSpammerLog('warning', `Failed to fund account ${i}: ${e.message}`);
         }
     }
 
@@ -265,7 +288,7 @@ async function spamTick() {
         const accts = await callSpammerWalletRpc('get_accounts', {}, 15000);
         const accounts = accts.result?.subaddress_accounts || [];
         if (accounts.length <= 1) {
-            pushSpammerLog('warn', 'No leaf accounts to spam from — build output tree first');
+            pushSpammerLog('warning', 'No leaf accounts to spam from — build output tree first');
             spamInFlight = false;
             return;
         }
@@ -298,7 +321,7 @@ async function spamTick() {
         if (result.error) {
             spammerWalletState.spam_fail++;
             spammerWalletState.last_error = result.error.message;
-            pushSpammerLog('warn', `Spam fail: ${result.error.message}`);
+            pushSpammerLog('warning', `Spam fail: ${result.error.message}`);
         } else {
             spammerWalletState.spam_success++;
             spammerWalletState.last_error = null;
@@ -307,7 +330,7 @@ async function spamTick() {
     } catch (e) {
         spammerWalletState.spam_fail++;
         spammerWalletState.last_error = e.message;
-        pushSpammerLog('warn', `Spam error: ${e.message}`);
+        pushSpammerLog('warning', `Spam error: ${e.message}`);
     } finally {
         spamInFlight = false;
     }
@@ -351,6 +374,8 @@ module.exports = {
     createSpammerWallet,
     openSpammerWallet,
     closeSpammerWallet,
+    getSpammerSeed,
+    getSpammerRestoreHeight,
     refreshSpammerWalletState,
     fundSpammerWallet,
     buildOutputTree,

@@ -17,10 +17,10 @@ const WALLET_FILES_DIR = process.env.WALLET_FILES_DIR || '/wallet-files';
 const RELAY_TIMEOUT_MS = Number(process.env.RELAY_TIMEOUT_MS) || 8000;
 const MIN_STRESS_INTERVAL_MS = Number(process.env.MIN_STRESS_INTERVAL_MS) || 5000;
 const MAX_STRESS_AMOUNT_XMR = Number(process.env.MAX_STRESS_AMOUNT_XMR) || 100;
-const WALLET_STATE_TTL_MS = Number(process.env.WALLET_STATE_TTL_MS) || 10000;
-const WALLET_REFRESH_MS = Number(process.env.WALLET_REFRESH_MS) || 15000;
-const WALLET_RPC_FAST_TIMEOUT_MS = Number(process.env.WALLET_RPC_FAST_TIMEOUT_MS) || 30000;
-const WALLET_RPC_SLOW_TIMEOUT_MS = Number(process.env.WALLET_RPC_SLOW_TIMEOUT_MS) || 120000;
+const WALLET_STATE_TTL_MS = Number(process.env.WALLET_STATE_TTL_MS) || 60000;
+const WALLET_REFRESH_MS = Number(process.env.WALLET_REFRESH_MS) || 60000;
+const WALLET_RPC_FAST_TIMEOUT_MS = Number(process.env.WALLET_RPC_FAST_TIMEOUT_MS) || 90000;
+const WALLET_RPC_SLOW_TIMEOUT_MS = Number(process.env.WALLET_RPC_SLOW_TIMEOUT_MS) || 300000;
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 app.use(cors());
 app.use(bodyParser.json());
@@ -526,10 +526,11 @@ async function refreshWalletState({ force = false, includeHistory = false } = {}
     walletRefreshInFlight = (async () => {
         const next = { ...walletState, checked_at: new Date().toISOString(), active_wallet: getActiveWalletFilename() };
         try {
-            const [nodeInfoRes, addrRes, balRes] = await Promise.all([
+            const [nodeInfoRes, addrRes, balRes, heightRes] = await Promise.all([
                 callNodeRpc('get_info', {}, WALLET_RPC_FAST_TIMEOUT_MS).catch(e => ({ error: e.message })),
                 callWalletRpc('get_address', { account_index: 0 }, WALLET_RPC_FAST_TIMEOUT_MS).catch(e => ({ error: e.message })),
-                callWalletRpc('get_balance', { account_index: 0 }, WALLET_RPC_FAST_TIMEOUT_MS).catch(e => ({ error: e.message }))
+                callWalletRpc('get_balance', { account_index: 0 }, WALLET_RPC_FAST_TIMEOUT_MS).catch(e => ({ error: e.message })),
+                callWalletRpc('get_height', {}, WALLET_RPC_FAST_TIMEOUT_MS).catch(e => ({ error: e.message }))
             ]);
             let nodeInfo = nodeInfoRes.result;
             if (!nodeInfo && nodeInfoRes.error) {
@@ -544,6 +545,15 @@ async function refreshWalletState({ force = false, includeHistory = false } = {}
             if (addrRes.result?.address) {
                 next.wallet_open = true;
                 next.address = addrRes.result.address;
+            } else if (addrRes.error) {
+                // Timeout or network error — keep existing wallet_open state, don't flip to false
+                const isTimeout = /timeout|ECONNREFUSED|ETIMEDOUT|socket hang up|network error/i.test(addrRes.error);
+                if (!isTimeout) {
+                    // Definitive wallet error (e.g. "wallet not open") — clear state
+                    next.wallet_open = false;
+                    next.address = null;
+                }
+                // If timeout, leave next.wallet_open / next.address as-is from cache
             } else if (!next.address) {
                 next.wallet_open = false;
                 next.address = null;
@@ -555,7 +565,7 @@ async function refreshWalletState({ force = false, includeHistory = false } = {}
                 const perSub = Array.isArray(balRes.result.per_subaddress) ? balRes.result.per_subaddress : [];
                 next.num_unspent_outputs = perSub.reduce((sum, row) => sum + (row.num_unspent_outputs || 0), 0);
             }
-            next.wallet_height = next.daemon_height;
+            next.wallet_height = heightRes.result?.height || next.daemon_height;
             next.blocks_behind = next.daemon_height && next.wallet_height ? Math.max(0, next.daemon_height - next.wallet_height) : null;
             next.synced = Boolean(next.wallet_open && next.daemon_height && (next.blocks_behind === null || next.blocks_behind <= 1));
             next.syncing = Boolean(next.wallet_open && !next.synced);
@@ -657,6 +667,28 @@ app.get('/api/node/tx_pool', async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch tx pool stats' });
     }
 });
+app.post('/api/node/set_log', async (req, res) => {
+    try {
+        const { level } = req.body;
+        const resp = await axios.post(NODE_RPC + '/json_rpc', {
+            jsonrpc: '2.0', id: '0', method: 'set_log', params: { categories: level }
+        }, { timeout: 5000 });
+        monerodLogLevel = level;
+        res.json({ status: 'ok', level });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+app.post('/api/node/flush_txpool', async (req, res) => {
+    try {
+        const resp = await axios.post(NODE_RPC + '/json_rpc', {
+            jsonrpc: '2.0', id: '0', method: 'flush_txpool'
+        }, { timeout: 10000 });
+        res.json({ status: 'flushed', tx_count: resp.data.result?.tx_count || 0 });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
 app.get('/api/node/blocks', async (req, res) => {
     try {
         const limit = Math.min(parseInt(req.query.limit) || 20, 100);
@@ -714,6 +746,61 @@ function pushLog(level, source, message) {
         }
     });
 }
+// ═══════════════════════════════════════════════════════════════════════════════
+// REAL DAEMON LOG TAILER — reads monerod bitmonero.log and pushes to SSE
+// ═══════════════════════════════════════════════════════════════════════════════
+const MONEROD_LOG_FILE = process.env.MONEROD_LOG_FILE || '/data/db/testnet/bitmonero.log';
+let monerodLogLevel = process.env.DEFAULT_LOG_LEVEL || '0';
+let monerodLogPos = 0;
+let monerodLogInode = null;
+
+function parseMonerodLogLine(line) {
+    // Format: 2026-05-14 00:04:20.727	[P2P2]	INFO	stacktrace	src/common/...	...
+    const parts = line.split('\t');
+    if (parts.length < 3) return null;
+    let level = parts[2]?.toLowerCase() || 'info';
+    if (level === 'trace') level = 'debug';
+    if (level === 'fatal' || level === 'critical') level = 'error';
+    const source = (parts[1]?.replace(/[\[\]]/g, '') || 'monerod').toLowerCase();
+    const message = parts.slice(3).join(' ').trim() || parts[0];
+    return { level, source, message };
+}
+
+async function tailMonerodLog() {
+    try {
+        if (!fs.existsSync(MONEROD_LOG_FILE)) return;
+        const stat = fs.statSync(MONEROD_LOG_FILE);
+        // Reset if log rotated (inode changed)
+        if (monerodLogInode !== null && stat.ino !== monerodLogInode) {
+            monerodLogPos = 0;
+        }
+        monerodLogInode = stat.ino;
+        const size = stat.size;
+        if (size < monerodLogPos) monerodLogPos = 0; // truncated
+        if (size === monerodLogPos) return;
+        const fd = fs.openSync(MONEROD_LOG_FILE, 'r');
+        const buf = Buffer.alloc(size - monerodLogPos);
+        fs.readSync(fd, buf, 0, buf.length, monerodLogPos);
+        fs.closeSync(fd);
+        monerodLogPos = size;
+        const text = buf.toString('utf8');
+        const lines = text.split('\n');
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            const parsed = parseMonerodLogLine(line);
+            if (parsed) {
+                pushLog(parsed.level, 'monerod', `[${parsed.source}] ${parsed.message}`);
+            }
+        }
+    } catch (e) {
+        // Silently ignore — log file may be temporarily unavailable
+    }
+}
+setInterval(tailMonerodLog, 2000);
+
+app.get('/api/node/log_level', (req, res) => {
+    res.json({ level: monerodLogLevel });
+});
 // Poll monerod for status and generate log entries
 let lastHeight = 0;
 let lastLoggedHashrate = 0;
@@ -820,18 +907,41 @@ setInterval(async () => {
     }
 }, 30000);
 
-// Auto-open default spammer wallet if one exists on disk
+// Auto-open default spammer wallet — retry on timeout, don't create if file exists
 (async function autoOpenSpammerWallet() {
-    try {
-        await spammer.openSpammerWallet('spammer_main', '');
-        spammer.spammerWalletState.log.unshift({ time: new Date().toISOString(), level: 'info', message: 'Auto-opened spammer wallet: spammer_main' });
-    } catch (e) {
-        // Wallet doesn't exist — auto-create it for first-run installs
+    const MAX_RETRIES = 5;
+    let retries = 0;
+    while (retries < MAX_RETRIES) {
         try {
-            const result = await spammer.createSpammerWallet('spammer_main', '');
-            spammer.spammerWalletState.log.unshift({ time: new Date().toISOString(), level: 'info', message: `Auto-created spammer wallet: ${result.filename} — address ${result.address}` });
-        } catch (createErr) {
-            spammer.spammerWalletState.log.unshift({ time: new Date().toISOString(), level: 'error', message: `Failed to auto-create spammer wallet: ${createErr.message}` });
+            await spammer.openSpammerWallet('spammer_main', '');
+            spammer.spammerWalletState.log.unshift({ time: new Date().toISOString(), level: 'info', message: 'Auto-opened spammer wallet: spammer_main' });
+            return;
+        } catch (e) {
+            const isTimeout = /timeout|ETIMEDOUT|ECONNREFUSED|socket hang up/i.test(e.message);
+            if (isTimeout) {
+                retries++;
+                spammer.pushSpammerLog('warning', `Spammer wallet open timed out, retry ${retries}/${MAX_RETRIES}...`);
+                await new Promise(r => setTimeout(r, 10000));
+                continue;
+            }
+            // Non-timeout error (e.g. "wallet not found") — break and try create
+            break;
+        }
+    }
+    try {
+        const result = await spammer.createSpammerWallet('spammer_main', '');
+        spammer.spammerWalletState.log.unshift({ time: new Date().toISOString(), level: 'info', message: `Auto-created spammer wallet: ${result.filename} — address ${result.address}` });
+    } catch (createErr) {
+        const exists = /file_exists|already exists|already open|already loaded/i.test(createErr.message);
+        if (exists) {
+            spammer.pushSpammerLog('info', 'Spammer wallet already exists on disk, skipping creation');
+            // Try open one more time — may have been loaded by another process
+            try {
+                await spammer.openSpammerWallet('spammer_main', '');
+                spammer.spammerWalletState.log.unshift({ time: new Date().toISOString(), level: 'info', message: 'Auto-opened spammer wallet after existing file detected' });
+            } catch (_) {}
+        } else {
+            spammer.pushSpammerLog('error', `Failed to auto-create spammer wallet: ${createErr.message}`);
         }
     }
 })();
@@ -964,7 +1074,7 @@ async function pollMinerLogs() {
                 const rejectedCount = parseInt(rejectedMatch[1], 10);
                 if (!globalThis.lastRejectedCounter || rejectedCount > globalThis.lastRejectedCounter) {
                     globalThis.lastRejectedCounter = rejectedCount;
-                    pushLog('warn', 'miner', `BLOCK REJECTED (orphan): diff ${rejectedMatch.input.match(/diff\s+(\d+)/)?.[1] || 'unknown'}`);
+                    pushLog('warning', 'miner', `BLOCK REJECTED (orphan): diff ${rejectedMatch.input.match(/diff\s+(\d+)/)?.[1] || 'unknown'}`);
                 }
             }
             if (blockFoundMatch) {
@@ -1009,7 +1119,7 @@ async function pollMinerLogs() {
                 // Other net messages: connection errors, results, etc.
                 const msg = netMatch[2];
                 if (msg.includes('error') || msg.includes('failed')) {
-                    pushLog('warn', 'miner', `Net: ${msg}`);
+                    pushLog('warning', 'miner', `Net: ${msg}`);
                 }
             }
         });
@@ -1680,7 +1790,7 @@ async function sendStressTransaction() {
     if (!stressTestState.running || !stressTestState.targetAddress) return;
     if (stressTestState.txInFlight) {
         stressTestState.lastError = 'previous transfer still in flight; skipping tick';
-        pushLog('warn', 'stress', stressTestState.lastError);
+        pushLog('warning', 'stress', stressTestState.lastError);
         return;
     }
     stressTestState.txInFlight = true;
@@ -1701,14 +1811,14 @@ async function sendStressTransaction() {
             if (unlocked < needed || numOutputs === 0) {
                 stressTestState.failCount++;
                 stressTestState.lastError = `not_enough_unlocked_money: have ${(unlocked/1e12).toFixed(6)} tXMR unlocked across ${numOutputs} outputs`;
-                pushLog('warn', 'stress', `TX #${stressTestState.txCount} skipped — ${stressTestState.lastError}`);
+                pushLog('warning', 'stress', `TX #${stressTestState.txCount} skipped — ${stressTestState.lastError}`);
                 stressTestState.txInFlight = false;
                 return;
             }
         }
     } catch (balErr) {
         // Balance check failed — proceed blindly and let transfer error propagate
-        pushLog('warn', 'stress', `TX #${stressTestState.txCount} — pre-check failed (${balErr.message}), proceeding anyway`);
+        pushLog('warning', 'stress', `TX #${stressTestState.txCount} — pre-check failed (${balErr.message}), proceeding anyway`);
     }
     try {
         const result = await callWalletRpc('transfer', {
@@ -1792,7 +1902,7 @@ app.post('/api/stress/start', async (req, res) => {
     sendStressTransaction();
     stressTestState.intervalHandle = setInterval(sendStressTransaction, stressTestState.intervalMs);
     pushLog('info', 'stress', `Stress test started — interval: ${stressTestState.intervalMs}ms, target: ${stressTestState.targetAddress.substring(0, 16)}...`);
-    if (fundingWarning) pushLog('warn', 'stress', fundingWarning);
+    if (fundingWarning) pushLog('warning', 'stress', fundingWarning);
     res.json({ status: 'started', fundingWarning, ...stressTestState, intervalHandle: undefined });
 });
 app.post('/api/stress/stop', (req, res) => {
@@ -1905,6 +2015,18 @@ app.get('/api/xmrspammer/spam/status', (req, res) => {
 });
 app.get('/api/xmrspammer/log', (req, res) => {
     res.json({ logs: spammer.spammerWalletState.logs || [] });
+});
+app.get('/api/xmrspammer/wallet/seed', async (req, res) => {
+    try {
+        if (!spammer.spammerWalletState.wallet_open) {
+            return res.status(400).json({ error: 'No spammer wallet open' });
+        }
+        const seed = await spammer.getSpammerSeed();
+        const restoreHeight = await spammer.getSpammerRestoreHeight();
+        res.json({ result: { key: seed }, restore_height: restoreHeight });
+    } catch (e) {
+        res.status(504).json({ error: 'Seed phrase temporarily unavailable', details: e.message });
+    }
 });
 // ═══════════════════════════════════════════════════════════════════════════════
 // RECOVERY ENDPOINTS
