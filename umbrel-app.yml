@@ -2,7 +2,7 @@ manifestVersion: 1
 id: monero-fcmp-stressnet
 category: finance
 name: Monero FCMP++ Stressnet
-version: "0.19.0.0-alpha.1.5"
+version: "0.19.0.0-beta.2.0"
 tagline: Test the bleeding edge of Monero privacy.
 description: >-
   This app runs a full node on the Monero FCMP++ alpha stressnet as part of the rigorous testing phase for the upcoming privacy upgrade which introduces Full-Chain Membership Proofs.

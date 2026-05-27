@@ -3,7 +3,7 @@ id: brainchainz-monero-stressnet
 category: finance
 name: Monero FCMP++ Stressnet
 icon: https://raw.githubusercontent.com/brainchainz/monero-stressnet-umbrel/main/brainchainz-monero-stressnet/icon.png
-version: "1.6.0"
+version: "1.7.0"
 tagline: Test the bleeding edge of Monero privacy
 description: >-
   Run a full Monero FCMP++ stressnet node on your Umbrel, routed exclusively

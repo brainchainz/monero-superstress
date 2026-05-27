@@ -608,7 +608,7 @@ app.get('/api/node/info', async (req, res) => {
                     offline: false,
                     status: 'syncing',
                     blocks_left: sync.blocks_left,
-                    version: 'v0.19.0.0-beta.1.1-release (log fallback)',
+                    version: 'v0.19.0.0-beta.2.0-release (log fallback)',
                     nettype: 'testnet',
                     start_time: Math.floor(Date.now() / 1000)
                 },
@@ -910,7 +910,7 @@ setInterval(async () => {
 
 // Auto-open default spammer wallet — retry on timeout, don't create if file exists
 (async function autoOpenSpammerWallet() {
-    const MAX_RETRIES = 5;
+    const MAX_RETRIES = 10;
     let retries = 0;
     while (retries < MAX_RETRIES) {
         try {
@@ -918,34 +918,42 @@ setInterval(async () => {
             spammer.spammerWalletState.log.unshift({ time: new Date().toISOString(), level: 'info', message: 'Auto-opened spammer wallet: spammer_main' });
             return;
         } catch (e) {
-            const isTimeout = /timeout|ETIMEDOUT|ECONNREFUSED|socket hang up/i.test(e.message);
-            if (isTimeout) {
-                retries++;
-                spammer.pushSpammerLog('warning', `Spammer wallet open timed out, retry ${retries}/${MAX_RETRIES}...`);
-                await new Promise(r => setTimeout(r, 10000));
-                continue;
+            retries++;
+            const msg = e.message || '';
+            const notFound = /No such file|does not exist|not found/i.test(msg);
+            if (notFound) {
+                // Wallet file genuinely doesn't exist — try creating once
+                spammer.spammerWalletState.wallet_file_exists = false;
+                try {
+                    const result = await spammer.createSpammerWallet('spammer_main', '');
+                    spammer.spammerWalletState.log.unshift({ time: new Date().toISOString(), level: 'info', message: `Auto-created spammer wallet: ${result.filename} — address ${result.address}` });
+                    return;
+                } catch (createErr) {
+                    spammer.pushSpammerLog('error', `Create failed: ${createErr.message}`);
+                }
+                // Even if create failed, don't keep looping forever — let user handle it
+                break;
             }
-            // Non-timeout error (e.g. "wallet not found") — break and try create
-            break;
+            // RPC not ready or other error — keep retrying open
+            spammer.spammerWalletState.wallet_file_exists = true; // assume file exists since error wasn't "not found"
+            spammer.pushSpammerLog('warning', `Spammer wallet open retry ${retries}/${MAX_RETRIES}: ${msg}`);
+            await new Promise(r => setTimeout(r, 10000));
         }
     }
-    try {
-        const result = await spammer.createSpammerWallet('spammer_main', '');
-        spammer.spammerWalletState.log.unshift({ time: new Date().toISOString(), level: 'info', message: `Auto-created spammer wallet: ${result.filename} — address ${result.address}` });
-    } catch (createErr) {
-        const exists = /file_exists|already exists|already open|already loaded/i.test(createErr.message);
-        if (exists) {
-            spammer.pushSpammerLog('info', 'Spammer wallet already exists on disk, skipping creation');
-            // Try open one more time — may have been loaded by another process
-            try {
-                await spammer.openSpammerWallet('spammer_main', '');
-                spammer.spammerWalletState.log.unshift({ time: new Date().toISOString(), level: 'info', message: 'Auto-opened spammer wallet after existing file detected' });
-            } catch (_) {}
-        } else {
-            spammer.pushSpammerLog('error', `Failed to auto-create spammer wallet: ${createErr.message}`);
-        }
-    }
+    spammer.pushSpammerLog('error', 'Failed to auto-open spammer wallet after all retries');
 })();
+
+// Periodic re-try: if wallet isn't open yet, keep trying
+setInterval(async () => {
+    if (!spammer.spammerWalletState.wallet_open && !spammer.spammerWalletState.wallet_opening) {
+        try {
+            await spammer.openSpammerWallet('spammer_main', '');
+            spammer.spammerWalletState.log.unshift({ time: new Date().toISOString(), level: 'info', message: 'Auto-opened spammer wallet (periodic retry)' });
+        } catch (e) {
+            // Silent — will retry on next interval
+        }
+    }
+}, 15000);
 
 // Poll miner container logs
 async function pollMinerLogs() {
@@ -1169,7 +1177,7 @@ app.get('/api/config', async (req, res) => {
         wallet_rpc: WALLET_RPC,
         port: port,
         version: '1.6.0',
-        stressnet_tag: 'v0.19.0.0-beta.1.1',
+        stressnet_tag: 'v0.19.0.0-beta.2.0',
         network: 'FCMP++ Stressnet',
         tor_proxy: process.env.TOR_PROXY || 'tor:9050',
         pruned,

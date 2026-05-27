@@ -936,9 +936,11 @@ function StressTestTab() {
     const [spamStarting, setSpamStarting] = useState(false);
     const [spamStopping, setSpamStopping] = useState(false);
     const [creatingSpammer, setCreatingSpammer] = useState(false);
+    const [openingSpammer, setOpeningSpammer] = useState(false);
     const [treeResult, setTreeResult] = useState(null);
     const [fundResult, setFundResult] = useState(null);
     const [spamResult, setSpamResult] = useState(null);
+    const [openSpamResult, setOpenSpamResult] = useState(null);
     const [spamInterval, setSpamInterval] = useState(5);
     const [addrCopied, setAddrCopied] = useState(false);
     const [spammerSeed, setSpammerSeed] = useState(null);
@@ -1037,6 +1039,18 @@ function StressTestTab() {
         } finally { setCreatingSpammer(false); }
     };
 
+    const handleOpenSpammer = async () => {
+        setOpeningSpammer(true);
+        setOpenSpamResult(null);
+        try {
+            const res = await axios.post(`${API}/xmrspammer/wallet/open`, { filename: 'spammer_main', password: '' }, { timeout: 80000 });
+            setOpenSpamResult({ success: true, msg: `Opened spammer wallet — address ${res.data?.address || 'ready'}` });
+            fetchSpammer();
+        } catch (e) {
+            setOpenSpamResult({ success: false, msg: e.response?.data?.error || e.message });
+        } finally { setOpeningSpammer(false); }
+    };
+
     const revealSpammerSeed = async () => {
         if (spammerSeed) { setShowSpammerSeed(v => !v); return; }
         setSpammerSeedLoading(true);
@@ -1064,16 +1078,38 @@ function StressTestTab() {
             {/* Spammer Wallet Status */}
             <div className="glass-panel stress-control">
                 <h3 className="panel-title"><Icons.Wallet size={14} color="var(--tor)" /> Spammer Wallet</h3>
-                {!spammer?.wallet_open ? (
+                {spammer?.wallet_opening ? (
                     <div style={{ padding: '12px 0' }}>
-                        <div className="error-bar">No spammer wallet open. It will be auto-created on app startup.</div>
-                        <button className="btn-primary" style={{ marginTop: 10 }} onClick={handleCreateSpammer} disabled={creatingSpammer}>
-                            <Icons.Wallet size={14} /> {creatingSpammer ? 'Creating...' : 'Create Spammer Wallet'}
-                        </button>
-                        {spamResult && (
-                            <div className={`tx-result ${spamResult.success ? 'tx-ok' : 'tx-fail'}`} style={{ marginTop: 8 }}>
-                                {spamResult.msg}
-                            </div>
+                        <div className="info-bar" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span className="spinner" /> Opening spammer wallet...
+                        </div>
+                    </div>
+                ) : !spammer?.wallet_open ? (
+                    <div style={{ padding: '12px 0' }}>
+                        {spammer?.wallet_file_exists ? (
+                            <>
+                                <div className="info-bar">Wallet file found on disk but not loaded. Click Open to activate it.</div>
+                                <button className="btn-primary" style={{ marginTop: 10 }} onClick={handleOpenSpammer} disabled={openingSpammer}>
+                                    <Icons.Wallet size={14} /> {openingSpammer ? 'Opening...' : 'Open Spammer Wallet'}
+                                </button>
+                                {openSpamResult && (
+                                    <div className={`tx-result ${openSpamResult.success ? 'tx-ok' : 'tx-fail'}`} style={{ marginTop: 8 }}>
+                                        {openSpamResult.msg}
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <>
+                                <div className="error-bar">No spammer wallet found. Create one to start the stress test.</div>
+                                <button className="btn-primary" style={{ marginTop: 10 }} onClick={handleCreateSpammer} disabled={creatingSpammer}>
+                                    <Icons.Wallet size={14} /> {creatingSpammer ? 'Creating...' : 'Create Spammer Wallet'}
+                                </button>
+                                {spamResult && (
+                                    <div className={`tx-result ${spamResult.success ? 'tx-ok' : 'tx-fail'}`} style={{ marginTop: 8 }}>
+                                        {spamResult.msg}
+                                    </div>
+                                )}
+                            </>
                         )}
                     </div>
                 ) : (
@@ -1780,7 +1816,7 @@ export default function App() {
                     <img src="/supersress-logo.png" alt="SuperStress" className="brand-icon" />
                     <div className="brand-text">
                         <h1>MONERO SUPERSTRESS</h1>
-                        <span className="brand-sub">FCMP++ &middot; v0.19.0.0-beta.1.1 &middot; TOR ONLY</span>
+                        <span className="brand-sub">FCMP++ &middot; v0.19.0.0-beta.2.0 &middot; TOR ONLY</span>
                     </div>
                 </div>
                 <div className="header-right">
