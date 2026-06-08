@@ -11,6 +11,7 @@ RUN npm ci --ignore-scripts
 
 # Copy source and build React frontend
 COPY . .
+ARG CACHEBUST=4
 RUN npm run build
 
 # --- Production stage (smaller image) ---
@@ -31,6 +32,7 @@ RUN apk add --no-cache --virtual .build-deps python3 make g++ \
 
 # Copy built React app from builder
 COPY --from=builder /app/build ./build
+ARG CACHEBUST=5
 
 # Copy backend files
 COPY server.js ./

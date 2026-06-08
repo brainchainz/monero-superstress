@@ -534,6 +534,24 @@ function WalletTab({ onExplorerTx }) {
         }
     };
 
+    const closeWallet = async () => {
+        setLoading(true);
+        setError(null);
+        clearSensitiveWalletState();
+        try {
+            await axios.post(`${API}/wallet/close`, {}, { timeout: 15000 });
+            setAddress(null);
+            setBalance(null);
+            setTransfers(null);
+            setWalletStatus(null);
+            await fetchWallets();
+        } catch (e) {
+            setError('Close failed: ' + (e.response?.data?.details || e.message));
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const deleteWallet = async (filename) => {
         if (!filename) return;
         if (!window.confirm(`Delete wallet "${filename}"? This removes the wallet cache and keys from this app. Make sure the seed is backed up.`)) return;
@@ -785,7 +803,7 @@ function WalletTab({ onExplorerTx }) {
                     <button className="btn-ghost btn-sm" onClick={() => setShowRestore(true)} style={{ marginLeft: 4 }}>Import Seed</button>
                 </div>
             )}
-            <div className="wallet-dashboard-grid"><div className="glass-panel wallet-overview-card"><div className="wallet-overview-top"><div><span className="stat-label">Active Wallet</span><div className="mono" style={{ color: 'var(--text-0)', fontWeight: 700 }}>{activeDisplayName}</div><div className="mono-xs dimmed">{walletStatus?.active_wallet || activeWallet?.filename || 'stressnet_wallet'}</div></div><div className={`wallet-sync-pill ${walletSyncClass}`}>{walletSyncText}</div></div><div className="wallet-actions-row"><button className="btn-ghost btn-sm" onClick={() => fetchWallet({ initial: true, force: true })}>Refresh Status</button><button className="btn-danger btn-sm" onClick={() => deleteWallet(walletStatus?.active_wallet || activeWallet?.filename)} disabled={wallets.length <= 1 || deletingWallet || walletStatus?.busy}>{deletingWallet ? 'Deleting...' : 'Delete Wallet'}</button></div></div></div>
+            <div className="wallet-dashboard-grid"><div className="glass-panel wallet-overview-card"><div className="wallet-overview-top"><div><span className="stat-label">Active Wallet</span><div className="mono" style={{ color: 'var(--text-0)', fontWeight: 700 }}>{activeDisplayName}</div><div className="mono-xs dimmed">{walletStatus?.active_wallet || activeWallet?.filename || 'stressnet_wallet'}</div></div><div className={`wallet-sync-pill ${walletSyncClass}`}>{walletSyncText}</div></div><div className="wallet-actions-row"><button className="btn-ghost btn-sm" onClick={() => fetchWallet({ initial: true, force: true })}>Refresh Status</button><button className="btn-ghost btn-sm" onClick={closeWallet}>Close Wallet</button><button className="btn-danger btn-sm" onClick={() => deleteWallet(walletStatus?.active_wallet || activeWallet?.filename)} disabled={wallets.length <= 1 || deletingWallet || walletStatus?.busy}>{deletingWallet ? 'Deleting...' : 'Delete Wallet'}</button></div></div></div>
             <div className="wallet-header-row">
                 <div className="glass-panel wallet-balance-card"><span className="stat-label">Total Balance</span><span className="wallet-balance">{fmt.xmr(balance?.balance)} <small>tXMR</small></span><span className="stat-sub">Unlocked: {fmt.xmr(balance?.unlocked_balance)} tXMR</span><div className={`wallet-sync-pill ${walletSyncClass}`}>{walletSyncText}</div><span className="stat-sub">Daemon: {walletStatus?.daemon_height?.toLocaleString() || '\u2014'} · Outputs: {walletStatus?.num_unspent_outputs ?? balance?.num_unspent_outputs ?? '\u2014'}</span>{walletStatus?.message && <span className="mono-xs dimmed">{walletStatus.message}</span>}</div>
                 <div className="glass-panel wallet-address-card"><span className="stat-label">Addresses ({addresses.length})</span><div className="addr-list">{addresses.length === 0 && <div className="mono-xs dimmed">Loading addresses...</div>}{addresses.map((a, i) => (<div key={i} className="addr-row"><span className="mono-xs addr-text">{a.address}</span><button className="icon-btn" onClick={() => { try { navigator.clipboard.writeText(a.address); setAddrCopied(i); setTimeout(() => setAddrCopied(null), 2000); } catch {} }} title="Copy">{addrCopied === i ? <><Icons.Check size={14} color="var(--green)" /> <span style={{ color: 'var(--green)', fontSize: 10, marginLeft: 2 }}>Copied!</span></> : <Icons.Copy size={14} />}</button></div>))}</div><button className="btn-ghost btn-sm" onClick={refreshWallet} disabled={addrCopied === 'creating'}>{addrCopied === 'creating' ? 'Creating...' : addrCopied === 'done' ? <><Icons.Check size={12} color="var(--green)" /> Created</> : <><Icons.Refresh size={12} /> New Address</>}</button></div>
